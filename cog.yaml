@@ -5,16 +5,19 @@ build:
   system_packages:
     - "libgl1-mesa-glx"  # Required for OpenCV
   python_packages:
-    - "torch==2.0.1"
-    - "diffusers==0.27.1"  # Updated to version that includes Flux pipeline
+    - "torch==2.1.2"  # Updated to support float8
+    - "torchvision==0.16.2"  # Added matching torchvision
+    - "diffusers==0.32.0"  # Updated to version that includes Flux pipeline
     - "transformers==4.33.2"
     - "pillow==10.0.0"
     - "numpy==1.24.3"
-    - "huggingface-hub>=0.20.2"
+    - "huggingface-hub>=0.23.2"  # Downgraded to compatible version
     - "peft==0.5.0"
     - "opencv-python==4.8.0.74"
     - "protobuf==3.20.3"
     - "sentencepiece==0.1.99"
+    - "safetensors==0.4.1"  # Added for better safetensors support
+    - "accelerate==0.25.0"  # Added explicit version
   run:
     - curl -o /usr/local/bin/pget -L "https://github.com/replicate/pget/releases/download/v0.0.6/pget" && chmod +x /usr/local/bin/pget
     - pip install --upgrade pip

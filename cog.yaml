@@ -6,11 +6,11 @@ build:
     - "libgl1-mesa-glx"  # Required for OpenCV
   python_packages:
     - "torch==2.0.1"
-    - "diffusers==0.24.0"
+    - "diffusers==0.27.1"  # Updated to version that includes Flux pipeline
     - "transformers==4.33.2"
     - "pillow==10.0.0"
     - "numpy==1.24.3"
-    - "huggingface-hub==0.19.4"
+    - "huggingface-hub>=0.20.2"
     - "peft==0.5.0"
     - "opencv-python==4.8.0.74"
     - "protobuf==3.20.3"
@@ -18,6 +18,5 @@ build:
   run:
     - curl -o /usr/local/bin/pget -L "https://github.com/replicate/pget/releases/download/v0.0.6/pget" && chmod +x /usr/local/bin/pget
     - pip install --upgrade pip
-    - python download_weights.py
 
 predict: "predict.py:Predictor"

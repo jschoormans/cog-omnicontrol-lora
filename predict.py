@@ -6,10 +6,14 @@ from cog import BasePredictor, Input, Path
 from diffusers.pipelines import FluxPipeline
 from src.condition import Condition
 from src.generate import seed_everything, generate
+from download_weights import download_models
 
 class Predictor(BasePredictor):
     def setup(self):
         """Load the base model into memory but defer LoRA loading until prediction time"""
+
+        download_models()
+        
         # Load base model with minimal memory footprint
         self.pipe = FluxPipeline.from_pretrained(
             "models/flux-base",

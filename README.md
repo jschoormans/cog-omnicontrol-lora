@@ -2,6 +2,10 @@
 
 This repository contains the deployment configuration for running [OminiControl](https://github.com/Yuanshi9815/OminiControl) on [Replicate](https://replicate.com). OminiControl is a powerful and versatile subject-driven image generation model that enables precise control over image generation while maintaining high fidelity.
 
+```
+It's not currently deployed on Replicate due to huge dimension of model folder (flux1-dev and omini) > ~56 GB!
+```
+
 ## Credits
 
 This implementation is based on the OminiControl project:

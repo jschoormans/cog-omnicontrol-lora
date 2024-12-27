@@ -8,6 +8,8 @@ from src.condition import Condition
 from src.generate import seed_everything, generate
 from download_weights import download_models
 
+torch_float = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+
 class Predictor(BasePredictor):
     def setup(self):
         """Load the base model into memory but defer LoRA loading until prediction time"""
@@ -17,8 +19,8 @@ class Predictor(BasePredictor):
         # Load base model with minimal memory footprint
         self.pipe = FluxPipeline.from_pretrained(
             "models/flux-base",
-            torch_dtype=torch.bfloat16,
-            device_map="auto"  # Automatically optimize device placement
+            torch_dtype=torch_float,
+            # device_map="auto"  # Automatically optimize device placement
         )
         
         # Initialize cache for LoRA weights

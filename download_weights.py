@@ -23,20 +23,26 @@ def download_models(auth_token=None):
     os.makedirs("models", exist_ok=True)
     
     # Download base model
-    print("Downloading FLUX base model...")
-    base_model_path = snapshot_download(
-        "black-forest-labs/FLUX.1-dev",
-        local_dir="models/flux-base",
-        ignore_patterns=["*.md", "*.txt"],
-    )
+    if not os.path.exists("models/flux-base"):
+        print("Downloading FLUX base model...")
+        base_model_path = snapshot_download(
+            "black-forest-labs/FLUX.1-dev",
+            local_dir="models/flux-base",
+            ignore_patterns=["*.md", "*.txt"],
+        )
+    else:
+        base_model_path = "models/flux-base"
     
     # Download LoRA weights
-    print("Downloading OminiControl LoRA weights...")
-    lora_path = snapshot_download(
-        "Yuanshi/OminiControl",
-        local_dir="models/omini-control",
-        allow_patterns=["omini/subject_512.safetensors", "omini/subject_1024_beta.safetensors"],
-    )
+    if not os.path.exists("models/omini-control"):
+        print("Downloading OminiControl LoRA weights...")
+        lora_path = snapshot_download(
+            "Yuanshi/OminiControl",
+            local_dir="models/omini-control",
+            allow_patterns=["omini/subject_512.safetensors", "omini/subject_1024_beta.safetensors"],
+        )
+    else:
+        lora_path = "models/omini-control"
     
     return {
         "base_model": base_model_path,

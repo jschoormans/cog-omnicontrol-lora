@@ -50,19 +50,11 @@ def tranformer_forward(
     condition_ids: torch.Tensor,
     condition_type_ids: torch.Tensor,
     model_config: Optional[Dict[str, Any]] = {},
-    return_conditional_latents: bool = False,
     c_t=0,
     **params: dict,
 ):
     self = transformer
     use_condition = condition_latents is not None
-    use_condition_in_single_blocks = model_config.get(
-        "use_condition_in_single_blocks", True
-    )
-    # if return_conditional_latents is True, use_condition and use_condition_in_single_blocks must be True
-    assert not return_conditional_latents or (
-        use_condition and use_condition_in_single_blocks
-    ), "`return_conditional_latents` is True, `use_condition` and `use_condition_in_single_blocks` must be True"
 
     (
         hidden_states,
@@ -95,20 +87,24 @@ def tranformer_forward(
             logger.warning(
                 "Passing `scale` via `joint_attention_kwargs` when not using the PEFT backend is ineffective."
             )
+
     with enable_lora((self.x_embedder,), model_config.get("latent_lora", False)):
         hidden_states = self.x_embedder(hidden_states)
     condition_latents = self.x_embedder(condition_latents) if use_condition else None
 
     timestep = timestep.to(hidden_states.dtype) * 1000
+
     if guidance is not None:
         guidance = guidance.to(hidden_states.dtype) * 1000
     else:
         guidance = None
+
     temb = (
         self.time_text_embed(timestep, pooled_projections)
         if guidance is None
         else self.time_text_embed(timestep, guidance, pooled_projections)
     )
+
     cond_temb = (
         self.time_text_embed(torch.ones_like(timestep) * c_t * 1000, pooled_projections)
         if guidance is None
@@ -116,10 +112,6 @@ def tranformer_forward(
             torch.ones_like(timestep) * c_t * 1000, guidance, pooled_projections
         )
     )
-    if hasattr(self, "cond_type_embed") and condition_type_ids is not None:
-        cond_type_proj = self.time_text_embed.time_proj(condition_type_ids[0])
-        cond_type_emb = self.cond_type_embed(cond_type_proj.to(dtype=cond_temb.dtype))
-        cond_temb = cond_temb + cond_type_emb
     encoder_hidden_states = self.context_embedder(encoder_hidden_states)
 
     if txt_ids.ndim == 3:
@@ -138,33 +130,30 @@ def tranformer_forward(
     ids = torch.cat((txt_ids, img_ids), dim=0)
     image_rotary_emb = self.pos_embed(ids)
     if use_condition:
-        cond_ids = condition_ids
-        cond_rotary_emb = self.pos_embed(cond_ids)
+        # condition_ids[:, :1] = condition_type_ids
+        cond_rotary_emb = self.pos_embed(condition_ids)
 
     # hidden_states = torch.cat([hidden_states, condition_latents], dim=1)
 
     for index_block, block in enumerate(self.transformer_blocks):
         if self.training and self.gradient_checkpointing:
-
-            def create_custom_forward(module, return_dict=None):
-                def custom_forward(*inputs):
-                    if return_dict is not None:
-                        return module(*inputs, return_dict=return_dict)
-                    else:
-                        return module(*inputs)
-
-                return custom_forward
-
             ckpt_kwargs: Dict[str, Any] = (
                 {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
             )
-            encoder_hidden_states, hidden_states = torch.utils.checkpoint.checkpoint(
-                create_custom_forward(block),
-                hidden_states,
-                encoder_hidden_states,
-                temb,
-                image_rotary_emb,
-                **ckpt_kwargs,
+            encoder_hidden_states, hidden_states, condition_latents = (
+                torch.utils.checkpoint.checkpoint(
+                    block_forward,
+                    self=block,
+                    model_config=model_config,
+                    hidden_states=hidden_states,
+                    encoder_hidden_states=encoder_hidden_states,
+                    condition_latents=condition_latents if use_condition else None,
+                    temb=temb,
+                    cond_temb=cond_temb if use_condition else None,
+                    cond_rotary_emb=cond_rotary_emb if use_condition else None,
+                    image_rotary_emb=image_rotary_emb,
+                    **ckpt_kwargs,
+                )
             )
 
         else:
@@ -194,24 +183,25 @@ def tranformer_forward(
 
     for index_block, block in enumerate(self.single_transformer_blocks):
         if self.training and self.gradient_checkpointing:
-
-            def create_custom_forward(module, return_dict=None):
-                def custom_forward(*inputs):
-                    if return_dict is not None:
-                        return module(*inputs, return_dict=return_dict)
-                    else:
-                        return module(*inputs)
-
-                return custom_forward
-
             ckpt_kwargs: Dict[str, Any] = (
                 {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
             )
-            hidden_states = torch.utils.checkpoint.checkpoint(
-                create_custom_forward(block),
-                hidden_states,
-                temb,
-                image_rotary_emb,
+            result = torch.utils.checkpoint.checkpoint(
+                single_block_forward,
+                self=block,
+                model_config=model_config,
+                hidden_states=hidden_states,
+                temb=temb,
+                image_rotary_emb=image_rotary_emb,
+                **(
+                    {
+                        "condition_latents": condition_latents,
+                        "cond_temb": cond_temb,
+                        "cond_rotary_emb": cond_rotary_emb,
+                    }
+                    if use_condition
+                    else {}
+                ),
                 **ckpt_kwargs,
             )
 
@@ -228,14 +218,14 @@ def tranformer_forward(
                         "cond_temb": cond_temb,
                         "cond_rotary_emb": cond_rotary_emb,
                     }
-                    if use_condition_in_single_blocks and use_condition
+                    if use_condition
                     else {}
                 ),
             )
-            if use_condition_in_single_blocks and use_condition:
-                hidden_states, condition_latents = result
-            else:
-                hidden_states = result
+        if use_condition:
+            hidden_states, condition_latents = result
+        else:
+            hidden_states = result
 
         # controlnet residual
         if controlnet_single_block_samples is not None:
@@ -252,19 +242,11 @@ def tranformer_forward(
 
     hidden_states = self.norm_out(hidden_states, temb)
     output = self.proj_out(hidden_states)
-    if return_conditional_latents:
-        condition_latents = (
-            self.norm_out(condition_latents, cond_temb) if use_condition else None
-        )
-        condition_output = self.proj_out(condition_latents) if use_condition else None
 
     if USE_PEFT_BACKEND:
         # remove `lora_scale` from each PEFT layer
         unscale_lora_layers(self, lora_scale)
 
     if not return_dict:
-        return (
-            (output,) if not return_conditional_latents else (output, condition_output)
-        )
-
+        return (output,)
     return Transformer2DModelOutput(sample=output)

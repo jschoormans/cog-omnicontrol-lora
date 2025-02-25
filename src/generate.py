@@ -13,6 +13,15 @@ from diffusers.pipelines.flux.pipeline_flux import (
 )
 
 
+def get_config(config_path: str = None):
+    config_path = config_path or os.environ.get("XFL_CONFIG")
+    if not config_path:
+        return {}
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f)
+    return config
+
+
 def prepare_params(
     prompt: Union[str, List[str]] = None,
     prompt_2: Optional[Union[str, List[str]]] = None,
@@ -66,11 +75,13 @@ def seed_everything(seed: int = 42):
 def generate(
     pipeline: FluxPipeline,
     conditions: List[Condition] = None,
+    config_path: str = None,
     model_config: Optional[Dict[str, Any]] = {},
     condition_scale: float = 1.0,
+    default_lora: bool = False,
     **params: dict,
 ):
-    # model_config = model_config or get_config(config_path).get("model", {})
+    model_config = model_config or get_config(config_path).get("model", {})
     if condition_scale != 1:
         for name, module in pipeline.transformer.named_modules():
             if not name.endswith(".attn"):
@@ -166,12 +177,8 @@ def generate(
     use_condition = conditions is not None or []
     if use_condition:
         assert len(conditions) <= 1, "Only one condition is supported for now."
-        pipeline.set_adapters(
-            {
-                512: "subject_512",
-                1024: "subject_1024",
-            }[height]
-        )
+        if not default_lora:
+            pipeline.set_adapters(conditions[0].condition_type)
         for condition in conditions:
             tokens, ids, type_id = condition.encode(self)
             condition_latents.append(tokens)  # [batch_size, token_n, token_dim]
@@ -179,11 +186,6 @@ def generate(
             condition_type_ids.append(type_id)  # [token_n, 1]
         condition_latents = torch.cat(condition_latents, dim=1)
         condition_ids = torch.cat(condition_ids, dim=0)
-        if condition.condition_type == "subject":
-            delta = 32 if height == 512 else -32
-            # print(f"Condition delta: {delta}")
-            condition_ids[:, 2] += delta
-
         condition_type_ids = torch.cat(condition_type_ids, dim=0)
 
     # 5. Prepare timesteps

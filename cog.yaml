@@ -1,24 +1,22 @@
 build:
-#  gpu: true
-  #cuda: "11.8"
+  gpu: true
+  cuda: "12.4"
   python_version: "3.11"
-  system_packages:
-    - "libgl1-mesa-glx"  # Required for OpenCV
   python_packages:
-    - "torch>=2.3.1"
-    - "torchvision>=0.18.1"
-    - "diffusers==0.31.0"  # Updated to version that includes FluxPipeline
-    - "transformers==4.36.2"
-    - "pillow==10.0.0"
-    - "numpy==1.24.3"
-    - "huggingface-hub>=0.23.2"
-    - "peft==0.5.0"
-    - "opencv-python==4.8.0.74"
-    - "protobuf==3.20.3"
-    - "sentencepiece==0.1.99"
-    - "safetensors==0.4.1"
-    - "accelerate==0.25.0"
+    - "diffusers==0.32.2"
+    - "transformers==4.48.3"
+    - "numpy==2.2.3"
+    - "pillow==11.1.0"
+    - "peft==0.14.0"
+    - "protobuf==5.29.3"
+    - "sentencepiece==0.2.0"
+    - "opencv-python==4.11.0.86"
+    - "git+https://github.com/asomoza/image_gen_aux.git@b3ba07be8cba37f9ec2a5748ae5d86cc3879e228"
+
+
   run:
-    - curl -o /usr/local/bin/pget -L "https://github.com/replicate/pget/releases/download/v0.0.6/pget" && chmod +x /usr/local/bin/pget
+    - curl -o /usr/local/bin/pget -L "https://github.com/replicate/pget/releases/latest/download/pget_$(uname -s)_$(uname -m)" && chmod +x /usr/local/bin/pget
+
 
 predict: "predict.py:Predictor"
+image: "r8.im/jschoormans/unstaging"

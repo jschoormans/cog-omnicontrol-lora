@@ -5,13 +5,18 @@ from PIL import Image, ImageFilter
 import numpy as np
 import cv2
 
+from .pipeline_tools import encode_images
+
 condition_dict = {
     "depth": 0,
     "canny": 1,
     "subject": 4,
     "coloring": 6,
     "deblurring": 7,
+    "depth_pred": 8,
     "fill": 9,
+    "sr": 10,
+    "cartoon": 11,
 }
 
 
@@ -22,6 +27,7 @@ class Condition(object):
         raw_img: Union[Image.Image, torch.Tensor] = None,
         condition: Union[Image.Image, torch.Tensor] = None,
         mask=None,
+        position_delta=None,
     ) -> None:
         self.condition_type = condition_type
         assert raw_img is not None or condition is not None
@@ -29,6 +35,7 @@ class Condition(object):
             self.condition = self.get_condition(condition_type, raw_img)
         else:
             self.condition = condition
+        self.position_delta = position_delta
         # TODO: Add mask support
         assert mask is None, "Mask not supported yet"
 
@@ -67,6 +74,8 @@ class Condition(object):
             return condition_image
         elif condition_type == "fill":
             return raw_img.convert("RGB")
+        elif condition_type == "cartoon":
+            return raw_img.convert("RGB")
         return self.condition
 
     @property
@@ -83,26 +92,6 @@ class Condition(object):
         """
         return condition_dict[condition_type]
 
-    def _encode_image(self, pipe: FluxPipeline, cond_img: Image.Image) -> torch.Tensor:
-        """
-        Encodes an image condition into tokens using the pipeline.
-        """
-        cond_img = pipe.image_processor.preprocess(cond_img)
-        cond_img = cond_img.to(pipe.device).to(pipe.dtype)
-        cond_img = pipe.vae.encode(cond_img).latent_dist.sample()
-        cond_img = (
-            cond_img - pipe.vae.config.shift_factor
-        ) * pipe.vae.config.scaling_factor
-        cond_tokens = pipe._pack_latents(cond_img, *cond_img.shape)
-        cond_ids = pipe._prepare_latent_image_ids(
-            cond_img.shape[0],
-            cond_img.shape[2],
-            cond_img.shape[3],
-            pipe.device,
-            pipe.dtype,
-        )
-        return cond_tokens, cond_ids
-
     def encode(self, pipe: FluxPipeline) -> Tuple[torch.Tensor, torch.Tensor, int]:
         """
         Encodes the condition into tokens, ids and type_id.
@@ -113,12 +102,20 @@ class Condition(object):
             "subject",
             "coloring",
             "deblurring",
+            "depth_pred",
             "fill",
+            "sr",
+            "cartoon"
         ]:
-            tokens, ids = self._encode_image(pipe, self.condition)
+            tokens, ids = encode_images(pipe, self.condition)
         else:
             raise NotImplementedError(
                 f"Condition type {self.condition_type} not implemented"
             )
+        if self.position_delta is None and self.condition_type == "subject":
+            self.position_delta = [0, -self.condition.size[0] // 16]
+        if self.position_delta is not None:
+            ids[:, 1] += self.position_delta[0]
+            ids[:, 2] += self.position_delta[1]
         type_id = torch.ones_like(ids[:, :1]) * self.type_id
         return tokens, ids, type_id

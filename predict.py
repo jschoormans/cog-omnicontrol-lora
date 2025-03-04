@@ -88,6 +88,7 @@ class Predictor(BasePredictor):
             weight_name="pytorch_lora_weights.safetensors",
             adapter_name="subject"
         )
+        # self.set_adapter_name("subject")
         self.current_lora_name = "subject"
 
 
@@ -105,6 +106,7 @@ class Predictor(BasePredictor):
         self,
         image: Path = Input(description="Input image for conditioning"),
         prompt: str = Input(description="Text prompt for generation"),
+        negative_prompt: str = Input(description="Negative text prompt for generation", default=""),
         resolution: int = Input(
             description="Output resolution",
             default=768,
@@ -123,6 +125,18 @@ class Predictor(BasePredictor):
             ge=256,
             le=2048
         ),
+        scale: float = Input(
+            description="Scale of the conditioning image",
+            default=1.0,
+            ge=0.0,
+            le=2.0
+        ), 
+        seed: int = Input(
+            description="Seed for the generation",
+            default=0,
+            ge=0,
+            le=2**32 - 1
+        )
     ) -> Path:
         """Run a single prediction on the model"""
         # Load appropriate LoRA weights
@@ -131,7 +145,6 @@ class Predictor(BasePredictor):
 
 
         image = Image.open(image).convert("RGB")
-
         image = self.resize_shortest_side(image, resolution_conditioning)
         condition = Condition("subject", image, position_delta=(0,0))
 
@@ -139,14 +152,32 @@ class Predictor(BasePredictor):
         if hasattr(self.pipe, "to"):
             self.pipe.to("cuda")
 
+        # Keep aspect ratio by using the smallest side as resolution
+        w, h = image.size
+        if w < h:
+            resolution_width = resolution
+            resolution_height = h * resolution // w
+        else:
+            resolution_width = w * resolution // h 
+            resolution_height = resolution
+
+        negative_prompt = f"({negative_prompt})" if negative_prompt else None
+
+        if seed != 0:
+            print(f"Setting seed to {seed}")
+            seed_everything(seed)
+
+
         # Generate image
         output = generate(
             pipeline=self.pipe,
             prompt=prompt.strip(),
+            negative_prompt=negative_prompt,
             conditions=[condition],
             num_inference_steps=num_inference_steps,
-            height=resolution,
-            width=resolution,
+            height=resolution_height,
+            width=resolution_width,
+            joint_attention_kwargs={"scale": scale},
         ).images[0]
     
         

@@ -45,14 +45,11 @@ def download_models(auth_token=None):
     #     lora_path = "models/omini-control"
 
     # download jschoormans/unstaging
-    if not os.path.exists("models/unstaging"):
-        print("Downloading unstaging model...")
-        unstaging_path = snapshot_download(
-            "jschoormans/unstaging",
-            local_dir="models/unstaging",
-        )
-    else:
-        unstaging_path = "models/unstaging"
+    print("Downloading unstaging model...")
+    unstaging_path = snapshot_download(
+        "jschoormans/unstaging",
+        local_dir="models/unstaging",
+    )
     
     return {
         "unstaging": unstaging_path

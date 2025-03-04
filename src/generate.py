@@ -144,6 +144,8 @@ def generate(
         if self.joint_attention_kwargs is not None
         else None
     )
+
+    print(f"lora_scale: {lora_scale}")
     (
         prompt_embeds,
         pooled_prompt_embeds,
